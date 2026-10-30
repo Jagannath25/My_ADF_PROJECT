@@ -5,14 +5,11 @@
 		"factoryName": {
 			"value": "DFJagannathRasekar"
 		},
-		"AzureDataLakeStorage1_accountKey": {
-			"value": ""
-		},
-		"LS_azuredb_password": {
-			"value": ""
-		},
 		"AzureDataLakeStorage1_properties_typeProperties_url": {
 			"value": "https://sajagannath.dfs.core.windows.net/"
+		},
+		"AzureKeyVault1_properties_typeProperties_baseUrl": {
+			"value": "https://sqltoazure.vault.azure.net/"
 		},
 		"LS_adls_properties_typeProperties_url": {
 			"value": "https://sajagannath.dfs.core.windows.net/"
