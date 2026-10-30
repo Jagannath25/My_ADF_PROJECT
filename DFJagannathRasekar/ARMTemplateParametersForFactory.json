@@ -1,0 +1,33 @@
+{
+	"$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentParameters.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"value": "DFJagannathRasekar"
+		},
+		"AzureDataLakeStorage1_accountKey": {
+			"value": ""
+		},
+		"LS_azuredb_password": {
+			"value": ""
+		},
+		"AzureDataLakeStorage1_properties_typeProperties_url": {
+			"value": "https://sajagannath.dfs.core.windows.net/"
+		},
+		"LS_adls_properties_typeProperties_url": {
+			"value": "https://sajagannath.dfs.core.windows.net/"
+		},
+		"LS_azuredb_properties_typeProperties_server": {
+			"value": "rasekarserver.database.windows.net"
+		},
+		"LS_azuredb_properties_typeProperties_database": {
+			"value": "empdb"
+		},
+		"LS_azuredb_properties_typeProperties_userName": {
+			"value": "rasekarserver"
+		},
+		"trigger1_properties_MainPipeLine_parameters_controlTableName": {
+			"value": "dbo.WatermarkTable"
+		}
+	}
+}

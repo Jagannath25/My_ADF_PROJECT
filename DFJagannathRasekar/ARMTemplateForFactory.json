@@ -1,0 +1,1200 @@
+{
+	"$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+	"contentVersion": "1.0.0.0",
+	"parameters": {
+		"factoryName": {
+			"type": "string",
+			"metadata": "Data Factory name",
+			"defaultValue": "DFJagannathRasekar"
+		},
+		"AzureDataLakeStorage1_accountKey": {
+			"type": "secureString",
+			"metadata": "Secure string for 'accountKey' of 'AzureDataLakeStorage1'"
+		},
+		"LS_azuredb_password": {
+			"type": "secureString",
+			"metadata": "Secure string for 'password' of 'LS_azuredb'"
+		},
+		"AzureDataLakeStorage1_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://sajagannath.dfs.core.windows.net/"
+		},
+		"LS_adls_properties_typeProperties_url": {
+			"type": "string",
+			"defaultValue": "https://sajagannath.dfs.core.windows.net/"
+		},
+		"LS_azuredb_properties_typeProperties_server": {
+			"type": "string",
+			"defaultValue": "rasekarserver.database.windows.net"
+		},
+		"LS_azuredb_properties_typeProperties_database": {
+			"type": "string",
+			"defaultValue": "empdb"
+		},
+		"LS_azuredb_properties_typeProperties_userName": {
+			"type": "string",
+			"defaultValue": "rasekarserver"
+		},
+		"trigger1_properties_MainPipeLine_parameters_controlTableName": {
+			"type": "string",
+			"defaultValue": "dbo.WatermarkTable"
+		}
+	},
+	"variables": {
+		"factoryId": "[concat('Microsoft.DataFactory/factories/', parameters('factoryName'))]"
+	},
+	"resources": [
+		{
+			"name": "[concat(parameters('factoryName'), '/DF_servertoadls')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "readDataFromServer",
+						"type": "Lookup",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "AzureSqlSource",
+								"sqlReaderQuery": {
+									"value": "@concat('select WatermarkValue from dbo.WatermarkTable where TableName=''',pipeline().parameters.tableName,'''')",
+									"type": "Expression"
+								},
+								"queryTimeout": "02:00:00",
+								"partitionOption": "None"
+							},
+							"dataset": {
+								"referenceName": "DS_azure",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": true
+						}
+					},
+					{
+						"name": "checkCount",
+						"type": "Lookup",
+						"dependsOn": [
+							{
+								"activity": "readDataFromServer",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "AzureSqlSource",
+								"sqlReaderQuery": {
+									"value": "@concat(\n    'SELECT COUNT(*) AS count FROM dbo.',\n    pipeline().parameters.tableName,\n    ' WHERE modifiedDate > ''',\n    activity('readDataFromServer').output.firstRow.WatermarkValue,\n    ''''\n)",
+									"type": "Expression"
+								},
+								"queryTimeout": "02:00:00",
+								"partitionOption": "None"
+							},
+							"dataset": {
+								"referenceName": "DS_azure",
+								"type": "DatasetReference",
+								"parameters": {}
+							}
+						}
+					},
+					{
+						"name": "checkIfcountgreaterThanzero",
+						"type": "IfCondition",
+						"dependsOn": [
+							{
+								"activity": "checkCount",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"expression": {
+								"value": "@greater(activity('checkCount').output.firstRow.count, 0)",
+								"type": "Expression"
+							},
+							"ifFalseActivities": [
+								{
+									"name": "AppendNoDataResult",
+									"type": "AppendVariable",
+									"dependsOn": [],
+									"userProperties": [],
+									"typeProperties": {
+										"variableName": "SummaryResult",
+										"value": {
+											"value": "@json(concat(\n'{\"tableName\":\"', pipeline().parameters.tableName,\n'\",\"runId\":\"', pipeline().RunId,\n'\",\"dataFactoryName\":\"', pipeline().DataFactory,\n'\",\"pipelineName\":\"', pipeline().Pipeline,\n'\",\"status\":\"No New Data\"',\n',\"previousWatermark\":\"', string(activity('readDataFromServer').output.firstRow.WatermarkValue),\n'\",\"rowsCopied\":\"0\"',\n',\"dataWritten\":\"0\"',\n',\"message\":\"No new records found. Copy was skipped and the watermark was unchanged.\"}'\n))",
+											"type": "Expression"
+										}
+									}
+								}
+							],
+							"ifTrueActivities": [
+								{
+									"name": "copyfromazuretoadls",
+									"type": "Copy",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"source": {
+											"type": "AzureSqlSource",
+											"sqlReaderQuery": {
+												"value": "@concat(\n    'SELECT * FROM dbo.',\n    pipeline().parameters.tableName,\n    ' WHERE modifiedDate > ''',\n    activity('readDataFromServer').output.firstRow.WatermarkValue,\n    ''''\n)",
+												"type": "Expression"
+											},
+											"queryTimeout": "02:00:00",
+											"partitionOption": "None"
+										},
+										"sink": {
+											"type": "DelimitedTextSink",
+											"storeSettings": {
+												"type": "AzureBlobFSWriteSettings"
+											},
+											"formatSettings": {
+												"type": "DelimitedTextWriteSettings",
+												"quoteAllText": true,
+												"fileExtension": ".txt"
+											}
+										},
+										"enableStaging": false,
+										"translator": {
+											"type": "TabularTranslator",
+											"typeConversion": true,
+											"typeConversionSettings": {
+												"allowDataTruncation": true,
+												"treatBooleanAsNumber": false
+											}
+										}
+									},
+									"inputs": [
+										{
+											"referenceName": "DS_azure",
+											"type": "DatasetReference",
+											"parameters": {}
+										}
+									],
+									"outputs": [
+										{
+											"referenceName": "DS_adls_csv",
+											"type": "DatasetReference",
+											"parameters": {
+												"table_name": {
+													"value": "@pipeline().parameters.tableName",
+													"type": "Expression"
+												}
+											}
+										}
+									]
+								},
+								{
+									"name": "updateWatermark",
+									"type": "Script",
+									"dependsOn": [
+										{
+											"activity": "copyfromazuretoadls",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"linkedServiceName": {
+										"referenceName": "LS_azuredb",
+										"type": "LinkedServiceReference"
+									},
+									"typeProperties": {
+										"scripts": [
+											{
+												"type": "Query",
+												"text": {
+													"value": "@concat(\n    'UPDATE dbo.WatermarkTable SET WatermarkValue = DATEADD(MINUTE, 330, SYSUTCDATETIME()) WHERE TableName = ''',\n    pipeline().parameters.tableName,\n    ''''\n)",
+													"type": "Expression"
+												}
+											}
+										],
+										"scriptBlockExecutionTimeout": "02:00:00"
+									}
+								},
+								{
+									"name": "AppendSuccessResult",
+									"type": "AppendVariable",
+									"dependsOn": [
+										{
+											"activity": "updateWatermark",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"userProperties": [],
+									"typeProperties": {
+										"variableName": "SummaryResult",
+										"value": {
+											"value": "@json(concat(\n'{\"tableName\":\"', pipeline().parameters.tableName,\n'\",\"runId\":\"', pipeline().RunId,\n'\",\"dataFactoryName\":\"', pipeline().DataFactory,\n'\",\"pipelineName\":\"', pipeline().Pipeline,\n'\",\"status\":\"Success\"',\n',\"previousWatermark\":\"', string(activity('readDataFromServer').output.firstRow.WatermarkValue),\n'\",\"rowsCopied\":\"', string(activity('copyfromazuretoadls').output.rowsCopied),\n'\",\"dataWritten\":\"', string(activity('copyfromazuretoadls').output.dataWritten),\n'\",\"message\":\"Data copied and watermark updated successfully.\"}'\n))",
+											"type": "Expression"
+										}
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "sendEmail",
+						"type": "WebActivity",
+						"state": "Inactive",
+						"onInactiveMarkAs": "Succeeded",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"method": "POST",
+							"headers": {},
+							"url": {
+								"value": "@pipeline().globalParameters.logic_app_url",
+								"type": "Expression"
+							},
+							"body": {
+								"value": "@json(concat(\n'{\"email_recipient\":\"', pipeline().globalParameters.email,\n'\",\"subject\":\"ADF Pipeline Execution Report - Success\"',\n',\"status\":\"Success\"',\n',\"dataFactoryName\":\"', pipeline().DataFactory,\n'\",\"pipelineName\":\"', pipeline().Pipeline,\n'\",\"runId\":\"', pipeline().RunId,\n'\",\"tableName\":\"', pipeline().parameters.tableName,\n'\",\"previousWatermark\":\"', string(activity('readDataFromServer').output.firstRow.WatermarkValue),\n'\",\"rowsCopied\":\"', string(activity('copyfromazuretoadls').output.rowsCopied),\n'\",\"dataWritten\":\"', string(activity('copyfromazuretoadls').output.dataWritten),\n'\",\"message\":\"Incremental data copied from Azure SQL to ADLS Gen2 and watermark updated successfully.\"}'\n))",
+								"type": "Expression"
+							}
+						}
+					},
+					{
+						"name": "sendEmailWithTableTemplate",
+						"type": "WebActivity",
+						"dependsOn": [
+							{
+								"activity": "checkIfcountgreaterThanzero",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"method": "POST",
+							"headers": {},
+							"url": {
+								"value": "@pipeline().globalParameters.logic_app_url",
+								"type": "Expression"
+							},
+							"body": {
+								"value": "@json(concat(\n'{\"email_recipient\":\"', pipeline().globalParameters.email,\n'\",\"subject\":\"ADF Pipeline Execution Summary\"',\n',\"dataFactoryName\":\"', pipeline().DataFactory,\n'\",\"pipelineName\":\"', pipeline().Pipeline,\n'\",\"runId\":\"', pipeline().RunId,\n'\",\"tableResults\":', string(variables('SummaryResult')),\n'}'\n))",
+								"type": "Expression"
+							}
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"tableName": {
+						"type": "String"
+					}
+				},
+				"variables": {
+					"SummaryResult": {
+						"type": "Array"
+					}
+				},
+				"annotations": [],
+				"lastPublishTime": "2026-10-29T20:42:31Z"
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/DS_azure')]",
+				"[concat(variables('factoryId'), '/datasets/DS_adls_csv')]",
+				"[concat(variables('factoryId'), '/linkedServices/LS_azuredb')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/MainPipeLine')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "ReadTableName",
+						"type": "Lookup",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "AzureSqlSource",
+								"sqlReaderQuery": {
+									"value": "@concat(\n    'SELECT TableName  FROM ',\n    pipeline().parameters.controlTableName\n)",
+									"type": "Expression"
+								},
+								"queryTimeout": "02:00:00",
+								"partitionOption": "None"
+							},
+							"dataset": {
+								"referenceName": "DS_azure",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": false
+						}
+					},
+					{
+						"name": "forEachForTableName",
+						"type": "ForEach",
+						"dependsOn": [
+							{
+								"activity": "ReadTableName",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"items": {
+								"value": "@activity('ReadTableName').output.value",
+								"type": "Expression"
+							},
+							"isSequential": true,
+							"activities": [
+								{
+									"name": "readDataFromServer",
+									"type": "Lookup",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"source": {
+											"type": "AzureSqlSource",
+											"sqlReaderQuery": {
+												"value": "@concat('select WatermarkValue from dbo.WatermarkTable where TableName=''',item().TableName,'''')",
+												"type": "Expression"
+											},
+											"queryTimeout": "02:00:00",
+											"partitionOption": "None"
+										},
+										"dataset": {
+											"referenceName": "DS_azure",
+											"type": "DatasetReference",
+											"parameters": {}
+										},
+										"firstRowOnly": true
+									}
+								},
+								{
+									"name": "checkCount",
+									"type": "Lookup",
+									"dependsOn": [
+										{
+											"activity": "readDataFromServer",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"source": {
+											"type": "AzureSqlSource",
+											"sqlReaderQuery": {
+												"value": "@concat(\n    'SELECT COUNT(*) AS count FROM dbo.',\n    item().TableName,\n    ' WHERE modifiedDate > ''',\n    activity('readDataFromServer').output.firstRow.WatermarkValue,\n    ''''\n)",
+												"type": "Expression"
+											},
+											"queryTimeout": "02:00:00",
+											"partitionOption": "None"
+										},
+										"dataset": {
+											"referenceName": "DS_azure",
+											"type": "DatasetReference",
+											"parameters": {}
+										}
+									}
+								},
+								{
+									"name": "checkIfcountgreaterThanzero",
+									"type": "IfCondition",
+									"dependsOn": [
+										{
+											"activity": "checkCount",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"userProperties": [],
+									"typeProperties": {
+										"expression": {
+											"value": "@greater(activity('checkCount').output.firstRow.count, 0)",
+											"type": "Expression"
+										},
+										"ifFalseActivities": [
+											{
+												"name": "AppendNoDataResult",
+												"type": "AppendVariable",
+												"dependsOn": [],
+												"userProperties": [],
+												"typeProperties": {
+													"variableName": "SummaryResult",
+													"value": {
+														"value": "@json(concat(\n'{\"tableName\":\"', item().TableName,\n'\",\"runId\":\"', pipeline().RunId,\n'\",\"dataFactoryName\":\"', pipeline().DataFactory,\n'\",\"pipelineName\":\"', pipeline().Pipeline,\n'\",\"status\":\"No New Data\"',\n',\"previousWatermark\":\"', string(activity('readDataFromServer').output.firstRow.WatermarkValue),\n'\",\"rowsCopied\":\"0\"',\n',\"dataWritten\":\"0\"',\n',\"message\":\"No new records found. Copy was skipped and the watermark was unchanged.\"}'\n))",
+														"type": "Expression"
+													}
+												}
+											}
+										],
+										"ifTrueActivities": [
+											{
+												"name": "copyfromazuretoadls",
+												"type": "Copy",
+												"dependsOn": [],
+												"policy": {
+													"timeout": "0.12:00:00",
+													"retry": 0,
+													"retryIntervalInSeconds": 30,
+													"secureOutput": false,
+													"secureInput": false
+												},
+												"userProperties": [],
+												"typeProperties": {
+													"source": {
+														"type": "AzureSqlSource",
+														"sqlReaderQuery": {
+															"value": "@concat(\n    'SELECT * FROM dbo.',\n    item().TableName,\n    ' WHERE modifiedDate > ''',\n    activity('readDataFromServer').output.firstRow.WatermarkValue,\n    ''''\n)",
+															"type": "Expression"
+														},
+														"queryTimeout": "02:00:00",
+														"partitionOption": "None"
+													},
+													"sink": {
+														"type": "DelimitedTextSink",
+														"storeSettings": {
+															"type": "AzureBlobFSWriteSettings"
+														},
+														"formatSettings": {
+															"type": "DelimitedTextWriteSettings",
+															"quoteAllText": true,
+															"fileExtension": ".txt"
+														}
+													},
+													"enableStaging": false,
+													"translator": {
+														"type": "TabularTranslator",
+														"typeConversion": true,
+														"typeConversionSettings": {
+															"allowDataTruncation": true,
+															"treatBooleanAsNumber": false
+														}
+													}
+												},
+												"inputs": [
+													{
+														"referenceName": "DS_azure",
+														"type": "DatasetReference",
+														"parameters": {}
+													}
+												],
+												"outputs": [
+													{
+														"referenceName": "DS_adls_csv",
+														"type": "DatasetReference",
+														"parameters": {
+															"table_name": {
+																"value": "@item().TableName",
+																"type": "Expression"
+															}
+														}
+													}
+												]
+											},
+											{
+												"name": "updateWatermark",
+												"type": "Script",
+												"dependsOn": [
+													{
+														"activity": "copyfromazuretoadls",
+														"dependencyConditions": [
+															"Succeeded"
+														]
+													}
+												],
+												"policy": {
+													"timeout": "0.12:00:00",
+													"retry": 0,
+													"retryIntervalInSeconds": 30,
+													"secureOutput": false,
+													"secureInput": false
+												},
+												"userProperties": [],
+												"linkedServiceName": {
+													"referenceName": "LS_azuredb",
+													"type": "LinkedServiceReference"
+												},
+												"typeProperties": {
+													"scripts": [
+														{
+															"type": "Query",
+															"text": {
+																"value": "@concat(\n    'UPDATE dbo.WatermarkTable SET WatermarkValue = DATEADD(MINUTE, 330, SYSUTCDATETIME()) WHERE TableName = ''',\n    item().TableName,\n    ''''\n)",
+																"type": "Expression"
+															}
+														}
+													],
+													"scriptBlockExecutionTimeout": "02:00:00"
+												}
+											},
+											{
+												"name": "AppendSuccessResult",
+												"type": "AppendVariable",
+												"dependsOn": [
+													{
+														"activity": "updateWatermark",
+														"dependencyConditions": [
+															"Succeeded"
+														]
+													}
+												],
+												"userProperties": [],
+												"typeProperties": {
+													"variableName": "SummaryResult",
+													"value": {
+														"value": "@json(concat(\n'{\"tableName\":\"', item().TableName,\n'\",\"runId\":\"', pipeline().RunId,\n'\",\"dataFactoryName\":\"', pipeline().DataFactory,\n'\",\"pipelineName\":\"', pipeline().Pipeline,\n'\",\"status\":\"Success\"',\n',\"previousWatermark\":\"', string(activity('readDataFromServer').output.firstRow.WatermarkValue),\n'\",\"rowsCopied\":\"', string(activity('copyfromazuretoadls').output.rowsCopied),\n'\",\"dataWritten\":\"', string(activity('copyfromazuretoadls').output.dataWritten),\n'\",\"message\":\"Data copied and watermark updated successfully.\"}'\n))",
+														"type": "Expression"
+													}
+												}
+											}
+										]
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "sendEmailWithTableTemplate",
+						"type": "WebActivity",
+						"dependsOn": [
+							{
+								"activity": "forEachForTableName",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"method": "POST",
+							"headers": {},
+							"url": {
+								"value": "@pipeline().globalParameters.logic_app_url",
+								"type": "Expression"
+							},
+							"body": {
+								"value": "@json(concat(\n'{\"email_recipient\":\"', pipeline().globalParameters.email,\n'\",\"subject\":\"ADF Pipeline Execution Summary\"',\n',\"dataFactoryName\":\"', pipeline().DataFactory,\n'\",\"pipelineName\":\"', pipeline().Pipeline,\n'\",\"runId\":\"', pipeline().RunId,\n'\",\"tableResults\":', string(variables('SummaryResult')),\n'}'\n))",
+								"type": "Expression"
+							}
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"controlTableName": {
+						"type": "string",
+						"defaultValue": "dbo.WatermarkTable"
+					}
+				},
+				"variables": {
+					"SummaryResult": {
+						"type": "Array"
+					}
+				},
+				"annotations": [],
+				"lastPublishTime": "2026-10-29T20:42:31Z"
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/DS_azure')]",
+				"[concat(variables('factoryId'), '/datasets/DS_adls_csv')]",
+				"[concat(variables('factoryId'), '/linkedServices/LS_azuredb')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/PL_Demo_main')]",
+			"type": "Microsoft.DataFactory/factories/pipelines",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"activities": [
+					{
+						"name": "ReadTableName",
+						"type": "Lookup",
+						"dependsOn": [],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"source": {
+								"type": "AzureSqlSource",
+								"sqlReaderQuery": {
+									"value": "@concat(\n    'SELECT SourceSchemaName,SourceTableName  FROM ',pipeline().parameters.controlSchemaName,'.',\n    pipeline().parameters.controlTableName\n)",
+									"type": "Expression"
+								},
+								"queryTimeout": "02:00:00",
+								"partitionOption": "None"
+							},
+							"dataset": {
+								"referenceName": "DS_azure",
+								"type": "DatasetReference",
+								"parameters": {}
+							},
+							"firstRowOnly": false
+						}
+					},
+					{
+						"name": "forEachForTableName",
+						"type": "ForEach",
+						"dependsOn": [
+							{
+								"activity": "ReadTableName",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"userProperties": [],
+						"typeProperties": {
+							"items": {
+								"value": "@activity('ReadTableName').output.value",
+								"type": "Expression"
+							},
+							"isSequential": true,
+							"activities": [
+								{
+									"name": "readDataFromServer",
+									"type": "Lookup",
+									"dependsOn": [],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"source": {
+											"type": "AzureSqlSource",
+											"sqlReaderQuery": {
+												"value": "@concat(\n    'SELECT LastWatermarkValue FROM ',\n    pipeline().parameters.controlSchemaName,\n    '.',\n    pipeline().parameters.controlTableName,\n    ' WHERE SourceSchemaName = ''',\n    item().SourceSchemaName,\n    ''' AND SourceTableName = ''',\n    item().SourceTableName,\n    ''''\n)",
+												"type": "Expression"
+											},
+											"queryTimeout": "02:00:00",
+											"partitionOption": "None"
+										},
+										"dataset": {
+											"referenceName": "DS_azure",
+											"type": "DatasetReference",
+											"parameters": {}
+										},
+										"firstRowOnly": true
+									}
+								},
+								{
+									"name": "checkCount",
+									"type": "Lookup",
+									"dependsOn": [
+										{
+											"activity": "readDataFromServer",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"policy": {
+										"timeout": "0.12:00:00",
+										"retry": 0,
+										"retryIntervalInSeconds": 30,
+										"secureOutput": false,
+										"secureInput": false
+									},
+									"userProperties": [],
+									"typeProperties": {
+										"source": {
+											"type": "AzureSqlSource",
+											"sqlReaderQuery": {
+												"value": "@concat(\n    'SELECT COUNT(*) AS count FROM [',\n    item().SourceSchemaName,\n    '].[',\n    item().SourceTableName,\n    '] WHERE [modifiedDate] > ''',\n    string(activity('readDataFromServer').output.firstRow.LastWatermarkValue),\n    ''''\n)",
+												"type": "Expression"
+											},
+											"queryTimeout": "02:00:00",
+											"partitionOption": "None"
+										},
+										"dataset": {
+											"referenceName": "DS_azure",
+											"type": "DatasetReference",
+											"parameters": {}
+										}
+									}
+								},
+								{
+									"name": "checkIfcountgreaterThanzero",
+									"type": "IfCondition",
+									"dependsOn": [
+										{
+											"activity": "checkCount",
+											"dependencyConditions": [
+												"Succeeded"
+											]
+										}
+									],
+									"userProperties": [],
+									"typeProperties": {
+										"expression": {
+											"value": "@greater(activity('checkCount').output.firstRow.count, 0)",
+											"type": "Expression"
+										},
+										"ifFalseActivities": [
+											{
+												"name": "AppendNoDataResult",
+												"type": "AppendVariable",
+												"dependsOn": [],
+												"userProperties": [],
+												"typeProperties": {
+													"variableName": "SummaryResult",
+													"value": {
+														"value": "@json(concat(\n'{\"schemaName\":\"', item().SourceSchemaName,\n'\",\"tableName\":\"', item().SourceTableName,\n'\",\"runId\":\"', pipeline().RunId,\n'\",\"dataFactoryName\":\"', pipeline().DataFactory,\n'\",\"pipelineName\":\"', pipeline().Pipeline,\n'\",\"status\":\"No New Data\"',\n',\"previousWatermark\":\"', string(activity('readDataFromServer').output.firstRow.LastWatermarkValue),\n'\",\"rowsCopied\":\"0\"',\n',\"dataWritten\":\"0\"',\n',\"message\":\"No new records found. Copy was skipped and the watermark was unchanged.\"}'\n))",
+														"type": "Expression"
+													}
+												}
+											}
+										],
+										"ifTrueActivities": [
+											{
+												"name": "copyfromazuretoadls",
+												"type": "Copy",
+												"dependsOn": [],
+												"policy": {
+													"timeout": "0.12:00:00",
+													"retry": 0,
+													"retryIntervalInSeconds": 30,
+													"secureOutput": false,
+													"secureInput": false
+												},
+												"userProperties": [],
+												"typeProperties": {
+													"source": {
+														"type": "AzureSqlSource",
+														"sqlReaderQuery": {
+															"value": "@concat(\n    'SELECT * FROM [',\n    item().SourceSchemaName,\n    '].[',\n    item().SourceTableName,\n    '] WHERE [modifiedDate] > ''',\n    string(activity('readDataFromServer').output.firstRow.LastWatermarkValue),\n    ''''\n)",
+															"type": "Expression"
+														},
+														"queryTimeout": "02:00:00",
+														"partitionOption": "None"
+													},
+													"sink": {
+														"type": "DelimitedTextSink",
+														"storeSettings": {
+															"type": "AzureBlobFSWriteSettings"
+														},
+														"formatSettings": {
+															"type": "DelimitedTextWriteSettings",
+															"quoteAllText": true,
+															"fileExtension": ".txt"
+														}
+													},
+													"enableStaging": false,
+													"translator": {
+														"type": "TabularTranslator",
+														"typeConversion": true,
+														"typeConversionSettings": {
+															"allowDataTruncation": true,
+															"treatBooleanAsNumber": false
+														}
+													}
+												},
+												"inputs": [
+													{
+														"referenceName": "DS_azure",
+														"type": "DatasetReference",
+														"parameters": {}
+													}
+												],
+												"outputs": [
+													{
+														"referenceName": "DS_adls_csv",
+														"type": "DatasetReference",
+														"parameters": {
+															"table_name": {
+																"value": "@item().SourceTableName",
+																"type": "Expression"
+															}
+														}
+													}
+												]
+											},
+											{
+												"name": "updateWatermark",
+												"type": "Script",
+												"dependsOn": [
+													{
+														"activity": "copyfromazuretoadls",
+														"dependencyConditions": [
+															"Succeeded"
+														]
+													}
+												],
+												"policy": {
+													"timeout": "0.12:00:00",
+													"retry": 0,
+													"retryIntervalInSeconds": 30,
+													"secureOutput": false,
+													"secureInput": false
+												},
+												"userProperties": [],
+												"linkedServiceName": {
+													"referenceName": "LS_azuredb",
+													"type": "LinkedServiceReference"
+												},
+												"typeProperties": {
+													"scripts": [
+														{
+															"type": "Query",
+															"text": {
+																"value": "@concat(\n    'UPDATE control.ctl_Watermark SET LastWatermarkValue = DATEADD(MINUTE, 330, SYSUTCDATETIME()) WHERE SourceSchemaName = ''',\n    item().SourceSchemaName,\n    ''' AND SourceTableName = ''',\n    item().SourceTableName,\n    ''''\n)",
+																"type": "Expression"
+															}
+														}
+													],
+													"scriptBlockExecutionTimeout": "02:00:00"
+												}
+											},
+											{
+												"name": "AppendSuccessResult",
+												"type": "AppendVariable",
+												"dependsOn": [
+													{
+														"activity": "updateWatermark",
+														"dependencyConditions": [
+															"Succeeded"
+														]
+													}
+												],
+												"userProperties": [],
+												"typeProperties": {
+													"variableName": "SummaryResult",
+													"value": {
+														"value": "@json(concat(\n'{\"schemaName\":\"', item().SourceSchemaName,\n'\",\"tableName\":\"', item().SourceTableName,\n'\",\"runId\":\"', pipeline().RunId,\n'\",\"dataFactoryName\":\"', pipeline().DataFactory,\n'\",\"pipelineName\":\"', pipeline().Pipeline,\n'\",\"status\":\"Success\"',\n',\"previousWatermark\":\"', string(activity('readDataFromServer').output.firstRow.LastWatermarkValue),\n'\",\"rowsCopied\":\"', string(activity('copyfromazuretoadls').output.rowsCopied),\n'\",\"dataWritten\":\"', string(activity('copyfromazuretoadls').output.dataWritten),\n'\",\"message\":\"Data copied and watermark updated successfully.\"}'\n))",
+														"type": "Expression"
+													}
+												}
+											}
+										]
+									}
+								}
+							]
+						}
+					},
+					{
+						"name": "sendEmailWithTableTemplate",
+						"type": "WebActivity",
+						"dependsOn": [
+							{
+								"activity": "forEachForTableName",
+								"dependencyConditions": [
+									"Succeeded"
+								]
+							}
+						],
+						"policy": {
+							"timeout": "0.12:00:00",
+							"retry": 0,
+							"retryIntervalInSeconds": 30,
+							"secureOutput": false,
+							"secureInput": false
+						},
+						"userProperties": [],
+						"typeProperties": {
+							"method": "POST",
+							"headers": {},
+							"url": {
+								"value": "@pipeline().globalParameters.newappcred",
+								"type": "Expression"
+							},
+							"body": {
+								"value": "@json(concat(\n    '{\"email_recipient\":\"', pipeline().globalParameters.email,\n    '\",\"subject\":\"ADF Pipeline Execution Summary\"',\n    ',\"dataFactoryName\":\"', pipeline().DataFactory,\n    '\",\"pipelineName\":\"', pipeline().Pipeline,\n    '\",\"runId\":\"', pipeline().RunId,\n    '\",\"tableResults\":', string(variables('SummaryResult')),\n    '}'\n))",
+								"type": "Expression"
+							}
+						}
+					}
+				],
+				"policy": {
+					"elapsedTimeMetric": {}
+				},
+				"parameters": {
+					"controlTableName": {
+						"type": "string",
+						"defaultValue": "ctl_Watermark"
+					},
+					"controlSchemaName": {
+						"type": "string",
+						"defaultValue": "control"
+					}
+				},
+				"variables": {
+					"SummaryResult": {
+						"type": "Array"
+					}
+				},
+				"annotations": [],
+				"lastPublishTime": "2026-10-29T22:58:06Z"
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/datasets/DS_azure')]",
+				"[concat(variables('factoryId'), '/datasets/DS_adls_csv')]",
+				"[concat(variables('factoryId'), '/linkedServices/LS_azuredb')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/DS_adls_csv')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "LS_adls",
+					"type": "LinkedServiceReference"
+				},
+				"parameters": {
+					"table_name": {
+						"type": "String"
+					}
+				},
+				"annotations": [],
+				"type": "DelimitedText",
+				"typeProperties": {
+					"location": {
+						"type": "AzureBlobFSLocation",
+						"fileName": {
+							"value": "@concat(dataset().table_name,'_',utcNow())",
+							"type": "Expression"
+						},
+						"folderPath": {
+							"value": "@if(\n    equals(dataset().table_name, 'dept'),\n    'bronze/department',\n    if(\n        equals(dataset().table_name, 'emp'),\n        'bronze/employee',\n        'unknown'\n    )\n)",
+							"type": "Expression"
+						},
+						"fileSystem": "myconatiner"
+					},
+					"columnDelimiter": ",",
+					"escapeChar": "\\",
+					"firstRowAsHeader": true,
+					"quoteChar": "\""
+				},
+				"schema": []
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/LS_adls')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/DS_azure')]",
+			"type": "Microsoft.DataFactory/factories/datasets",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"linkedServiceName": {
+					"referenceName": "LS_azuredb",
+					"type": "LinkedServiceReference"
+				},
+				"annotations": [],
+				"type": "AzureSqlTable",
+				"schema": [
+					{
+						"name": "emp_id",
+						"type": "int",
+						"precision": 10
+					},
+					{
+						"name": "emp_name",
+						"type": "varchar"
+					},
+					{
+						"name": "job",
+						"type": "varchar"
+					},
+					{
+						"name": "salary",
+						"type": "decimal",
+						"precision": 10,
+						"scale": 2
+					},
+					{
+						"name": "department",
+						"type": "varchar"
+					}
+				],
+				"typeProperties": {
+					"schema": "dbo",
+					"table": "WatermarkTable"
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/linkedServices/LS_azuredb')]"
+			]
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/AzureDataLakeStorage1')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('AzureDataLakeStorage1_properties_typeProperties_url')]",
+					"accountKey": {
+						"type": "SecureString",
+						"value": "[parameters('AzureDataLakeStorage1_accountKey')]"
+					}
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/LS_adls')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureBlobFS",
+				"typeProperties": {
+					"url": "[parameters('LS_adls_properties_typeProperties_url')]"
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/LS_azuredb')]",
+			"type": "Microsoft.DataFactory/factories/linkedServices",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"type": "AzureSqlDatabase",
+				"typeProperties": {
+					"server": "[parameters('LS_azuredb_properties_typeProperties_server')]",
+					"database": "[parameters('LS_azuredb_properties_typeProperties_database')]",
+					"encrypt": "mandatory",
+					"trustServerCertificate": false,
+					"authenticationType": "SQL",
+					"userName": "[parameters('LS_azuredb_properties_typeProperties_userName')]",
+					"password": {
+						"type": "SecureString",
+						"value": "[parameters('LS_azuredb_password')]"
+					}
+				}
+			},
+			"dependsOn": []
+		},
+		{
+			"name": "[concat(parameters('factoryName'), '/trigger1')]",
+			"type": "Microsoft.DataFactory/factories/triggers",
+			"apiVersion": "2018-06-01",
+			"properties": {
+				"annotations": [],
+				"runtimeState": "Started",
+				"pipelines": [
+					{
+						"pipelineReference": {
+							"referenceName": "MainPipeLine",
+							"type": "PipelineReference"
+						},
+						"parameters": {
+							"controlTableName": "[parameters('trigger1_properties_MainPipeLine_parameters_controlTableName')]"
+						}
+					}
+				],
+				"type": "ScheduleTrigger",
+				"typeProperties": {
+					"recurrence": {
+						"frequency": "Day",
+						"interval": 1,
+						"startTime": "2026-10-30T04:33:00",
+						"timeZone": "India Standard Time"
+					}
+				}
+			},
+			"dependsOn": [
+				"[concat(variables('factoryId'), '/pipelines/MainPipeLine')]"
+			]
+		}
+	]
+}

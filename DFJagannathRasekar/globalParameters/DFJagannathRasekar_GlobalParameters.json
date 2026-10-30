@@ -1,0 +1,14 @@
+{
+	"logic_app_url": {
+		"type": "string",
+		"value": "https://prod-15.northcentralus.logic.azure.com:443/workflows/07c279d0293a4d6898ee6485ba36a9e8/triggers/When_an_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_an_HTTP_request_is_received%2Frun&sv=1.0&sig=DJqDIqvMDAqgwICWVW9GrhmicZKX9QqYDAp8RcLZUng"
+	},
+	"email": {
+		"type": "string",
+		"value": "rasekarjagannath@gmail.com"
+	},
+	"newappcred": {
+		"type": "string",
+		"value": "https://prod-16.northcentralus.logic.azure.com:443/workflows/ae4329e1a2b84433a56121770c629454/triggers/When_an_HTTP_request_is_received/paths/invoke?api-version=2016-10-01&sp=%2Ftriggers%2FWhen_an_HTTP_request_is_received%2Frun&sv=1.0&sig=htRbCuAEjk0I0Kxz-l3xbJ-HLDz9i5KFJE6p968nJ-0"
+	}
+}
