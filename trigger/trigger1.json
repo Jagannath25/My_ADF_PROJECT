@@ -1,0 +1,27 @@
+{
+	"name": "trigger1",
+	"properties": {
+		"annotations": [],
+		"runtimeState": "Started",
+		"pipelines": [
+			{
+				"pipelineReference": {
+					"referenceName": "MainPipeLine",
+					"type": "PipelineReference"
+				},
+				"parameters": {
+					"controlTableName": "dbo.WatermarkTable"
+				}
+			}
+		],
+		"type": "ScheduleTrigger",
+		"typeProperties": {
+			"recurrence": {
+				"frequency": "Day",
+				"interval": 1,
+				"startTime": "2026-10-30T04:33:00",
+				"timeZone": "India Standard Time"
+			}
+		}
+	}
+}

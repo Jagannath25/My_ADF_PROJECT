@@ -1,0 +1,36 @@
+{
+	"name": "DS_adls_csv",
+	"properties": {
+		"linkedServiceName": {
+			"referenceName": "LS_adls",
+			"type": "LinkedServiceReference"
+		},
+		"parameters": {
+			"table_name": {
+				"type": "String"
+			}
+		},
+		"annotations": [],
+		"type": "DelimitedText",
+		"typeProperties": {
+			"location": {
+				"type": "AzureBlobFSLocation",
+				"fileName": {
+					"value": "@concat(dataset().table_name,'_',utcNow())",
+					"type": "Expression"
+				},
+				"folderPath": {
+					"value": "@if(\n    equals(dataset().table_name, 'dept'),\n    'bronze/department',\n    if(\n        equals(dataset().table_name, 'emp'),\n        'bronze/employee',\n        'unknown'\n    )\n)",
+					"type": "Expression"
+				},
+				"fileSystem": "myconatiner"
+			},
+			"columnDelimiter": ",",
+			"escapeChar": "\\",
+			"firstRowAsHeader": true,
+			"quoteChar": "\""
+		},
+		"schema": []
+	},
+	"type": "Microsoft.DataFactory/factories/datasets"
+}
