@@ -12,6 +12,16 @@
 				"parameters": {
 					"controlTableName": "dbo.WatermarkTable"
 				}
+			},
+			{
+				"pipelineReference": {
+					"referenceName": "PL_Demo_main",
+					"type": "PipelineReference"
+				},
+				"parameters": {
+					"controlTableName": "ctl_Watermark",
+					"controlSchemaName": "control"
+				}
 			}
 		],
 		"type": "ScheduleTrigger",
@@ -19,7 +29,7 @@
 			"recurrence": {
 				"frequency": "Day",
 				"interval": 1,
-				"startTime": "2026-10-30T04:33:00",
+				"startTime": "2026-10-31T01:21:00",
 				"timeZone": "India Standard Time"
 			}
 		}
