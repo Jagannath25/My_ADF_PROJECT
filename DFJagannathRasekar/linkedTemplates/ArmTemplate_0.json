@@ -1236,8 +1236,9 @@
 					"recurrence": {
 						"frequency": "Day",
 						"interval": 1,
-						"startTime": "2026-10-31T01:42:00",
-						"timeZone": "India Standard Time"
+						"startTime": "2026-10-31T01:49:00",
+						"timeZone": "India Standard Time",
+						"schedule": {}
 					}
 				}
 			},
