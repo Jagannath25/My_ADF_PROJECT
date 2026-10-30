@@ -35,6 +35,14 @@
 			"type": "string",
 			"defaultValue": "dbo.WatermarkTable"
 		},
+		"trigger1_properties_PL_Demo_main_parameters_controlTableName": {
+			"type": "string",
+			"defaultValue": "ctl_Watermark"
+		},
+		"trigger1_properties_PL_Demo_main_parameters_controlSchemaName": {
+			"type": "string",
+			"defaultValue": "control"
+		},
 		"containerUri": {
 			"type": "string",
 			"metadata": "URI to storage account containing linked ARM templates"
@@ -82,6 +90,12 @@
 					},
 					"trigger1_properties_MainPipeLine_parameters_controlTableName": {
 						"value": "[parameters('trigger1_properties_MainPipeLine_parameters_controlTableName')]"
+					},
+					"trigger1_properties_PL_Demo_main_parameters_controlTableName": {
+						"value": "[parameters('trigger1_properties_PL_Demo_main_parameters_controlTableName')]"
+					},
+					"trigger1_properties_PL_Demo_main_parameters_controlSchemaName": {
+						"value": "[parameters('trigger1_properties_PL_Demo_main_parameters_controlSchemaName')]"
 					}
 				}
 			},

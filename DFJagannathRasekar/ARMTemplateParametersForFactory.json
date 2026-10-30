@@ -25,6 +25,12 @@
 		},
 		"trigger1_properties_MainPipeLine_parameters_controlTableName": {
 			"value": "dbo.WatermarkTable"
+		},
+		"trigger1_properties_PL_Demo_main_parameters_controlTableName": {
+			"value": "ctl_Watermark"
+		},
+		"trigger1_properties_PL_Demo_main_parameters_controlSchemaName": {
+			"value": "control"
 		}
 	}
 }

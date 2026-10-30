@@ -34,6 +34,14 @@
 		"trigger1_properties_MainPipeLine_parameters_controlTableName": {
 			"type": "string",
 			"defaultValue": "dbo.WatermarkTable"
+		},
+		"trigger1_properties_PL_Demo_main_parameters_controlTableName": {
+			"type": "string",
+			"defaultValue": "ctl_Watermark"
+		},
+		"trigger1_properties_PL_Demo_main_parameters_controlSchemaName": {
+			"type": "string",
+			"defaultValue": "control"
 		}
 	},
 	"variables": {
@@ -1211,6 +1219,16 @@
 						"parameters": {
 							"controlTableName": "[parameters('trigger1_properties_MainPipeLine_parameters_controlTableName')]"
 						}
+					},
+					{
+						"pipelineReference": {
+							"referenceName": "PL_Demo_main",
+							"type": "PipelineReference"
+						},
+						"parameters": {
+							"controlTableName": "[parameters('trigger1_properties_PL_Demo_main_parameters_controlTableName')]",
+							"controlSchemaName": "[parameters('trigger1_properties_PL_Demo_main_parameters_controlSchemaName')]"
+						}
 					}
 				],
 				"type": "ScheduleTrigger",
@@ -1218,13 +1236,14 @@
 					"recurrence": {
 						"frequency": "Day",
 						"interval": 1,
-						"startTime": "2026-10-30T04:33:00",
+						"startTime": "2026-10-31T01:21:00",
 						"timeZone": "India Standard Time"
 					}
 				}
 			},
 			"dependsOn": [
-				"[concat(variables('factoryId'), '/pipelines/MainPipeLine')]"
+				"[concat(variables('factoryId'), '/pipelines/MainPipeLine')]",
+				"[concat(variables('factoryId'), '/pipelines/PL_Demo_main')]"
 			]
 		}
 	]
